@@ -17,6 +17,7 @@
  */
 package com.graphhopper.matching;
 
+import com.bmw.hmm.SequenceState;
 import com.graphhopper.routing.Path;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.Graph;
@@ -37,6 +38,7 @@ public class MatchResult {
     private long matchMillis;
     private double gpxEntriesLength;
     private long gpxEntriesMillis;
+    private List<PointCoordinate> pointCoordinates;
 
     public MatchResult(List<EdgeMatch> edgeMatches) {
         setEdgeMatches(edgeMatches);
@@ -70,7 +72,7 @@ public class MatchResult {
         this.mergedPath = mergedPath;
     }
 
-
+    public void setPointCoordinates(List<PointCoordinate> pointCoordinates){this.pointCoordinates = pointCoordinates;}
     /**
      * All possible assigned edges.
      */
@@ -102,6 +104,8 @@ public class MatchResult {
     public Path getMergedPath() {
         return mergedPath;
     }
+
+    public List<PointCoordinate> getPointCoordinates(){return pointCoordinates;}
 
     @Override
     public String toString() {

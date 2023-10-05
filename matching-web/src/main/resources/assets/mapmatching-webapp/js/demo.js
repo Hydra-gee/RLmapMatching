@@ -5,6 +5,7 @@ var iconObject = L.icon({
     iconAnchor: [12, 40]
 });
 
+var pointMarkers = {};
 $(document).ready(function (e) {
     jQuery.support.cors = true;
 
@@ -73,6 +74,33 @@ function setup(map, mmClient) {
                         properties: {style: {color: "#00cc33", weight: 6, opacity: 0.4}}
                     };
                     routeLayer.addData(geojsonFeature);
+                    //添加观测点复选框
+                    if(json['points'])
+                    appendHtml = "";
+                    for(let i in json['points']){
+                        appendHtml += '<label><input id="check'+i+'" name="'+i+'" type="checkbox" value="1" />点'+i+'</label> ';
+                    }
+                    $("#pointCheckbox").html(appendHtml)
+                    for(let i in json['points']){
+                        let lat1 = json['points'][i]['obs_lat'];
+                        let lon1 = json['points'][i]['obs_lon'];
+                        let lat2 = json['points'][i]['can_lat'];
+                        let lon2 = json['points'][i]['can_lon'];
+                        //复选框状态改变时，增加或删除标记点
+                        $("#check"+i).change(function() {
+                            console.log(lat1,lon1,lat2,lon2);
+                            if(pointMarkers[i]===undefined || pointMarkers[i]==null){
+                                pointMarkers[i] = {
+                                    obsMarker:L.circleMarker([lat1,lon1],{color:'black',opacity:1}).addTo(map),
+                                    canMarker:L.circleMarker([lat2,lon2],{color:'green',opacity:1}).addTo(map)
+                                }
+                            }else{
+                                map.removeLayer(pointMarkers[i].obsMarker);
+                                map.removeLayer(pointMarkers[i].canMarker);
+                                pointMarkers[i] = null;
+                            }
+                        });
+                    }
 
                     if (matchedPath.bbox) {
                         var minLon = matchedPath.bbox[0];

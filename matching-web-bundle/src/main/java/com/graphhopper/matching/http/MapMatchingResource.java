@@ -17,6 +17,7 @@
  */
 package com.graphhopper.matching.http;
 
+import com.bmw.hmm.SequenceState;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -115,8 +116,8 @@ public class MapMatchingResource {
         matching.setMeasurementErrorSigma(gpsAccuracy);
 
         List<Observation> measurements = gpx.trk.get(0).getEntries();
-        MatchResult matchResult = matching.match(measurements);
-
+//        MatchResult matchResult = matching.match(measurements);
+        MatchResult matchResult = matching.SPmatch(measurements);
         // TODO: Request logging and timing should perhaps be done somewhere outside
         float took = sw.stop().getSeconds();
         String infoStr = request.getRemoteAddr() + " " + request.getLocale() + " " + request.getHeader("User-Agent");
@@ -160,6 +161,8 @@ public class MapMatchingResource {
                 matchStatistics.put("original_distance", matchResult.getGpxEntriesLength());
                 map.putPOJO("map_matching", matchStatistics);
 
+                //观测点和对应候选点
+                map.putPOJO("points",matchResult.getPointCoordinates());
                 if (enableTraversalKeys) {
                     List<Integer> traversalKeylist = new ArrayList<>();
                     for (EdgeMatch em : matchResult.getEdgeMatches()) {

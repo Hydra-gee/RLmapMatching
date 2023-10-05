@@ -189,6 +189,68 @@ public class MapMatching {
         result.setWeighting(weighting);
         return result;
     }
+    public MatchResult SPmatch(List<Observation> observations) {
+        List<Observation> filteredObservations = filterObservations(observations);
+//        List<Observation> filteredObservations = observations;
+                List<Collection<Snap>> splitsPerObservation = filteredObservations.stream().map(o -> locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, DefaultEdgeFilter.allEdges(weighting.getFlagEncoder()), measurementErrorSigma))
+                .collect(Collectors.toList());
+        queryGraph = QueryGraph.create(graph, splitsPerObservation.stream().flatMap(Collection::stream).collect(Collectors.toList()));
+        splitsPerObservation = splitsPerObservation.stream().map(this::deduplicate).collect(Collectors.toList());
+        List<ObservationWithCandidateStates> timeSteps = createTimeSteps(filteredObservations, splitsPerObservation);
+        List<SequenceState<State, Observation, Path>> seq = computeShortestSequence(timeSteps);
+
+        //generate Result
+        List<EdgeIteratorState> path = seq.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
+        MatchResult result = new MatchResult(prepareEdgeMatches(seq));
+        //设置观测点和候选点坐标
+        List<PointCoordinate> pointCoordinates = new ArrayList<>();
+        for(SequenceState<State, Observation, com.graphhopper.routing.Path> s:seq){
+            pointCoordinates.add(new PointCoordinate(s.observation.getPoint().lat, s.observation.getPoint().lon,
+                    s.state.getSnap().getSnappedPoint().getLat(),s.state.getSnap().getSnappedPoint().getLon()));
+        }
+        result.setPointCoordinates(pointCoordinates);
+        result.setMergedPath(new MapMatchedPath(queryGraph, weighting, path));
+        result.setMatchMillis(seq.stream().filter(s -> s.transitionDescriptor != null).mapToLong(s -> s.transitionDescriptor.getTime()).sum());
+        result.setMatchLength(seq.stream().filter(s -> s.transitionDescriptor != null).mapToDouble(s -> s.transitionDescriptor.getDistance()).sum());
+        result.setGPXEntriesLength(gpxLength(observations));
+        result.setGraph(queryGraph);
+        result.setWeighting(weighting);
+        return result;
+    }
+
+    private List<SequenceState<State, Observation, Path>> computeShortestSequence(List<ObservationWithCandidateStates> timeSteps) {
+        List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
+        State prevCandidate = null;
+        for (ObservationWithCandidateStates timeStep : timeSteps) {
+            if (prevCandidate == null){
+                //第一个观测点，选择离其最近的候选点
+                prevCandidate = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
+                if(prevCandidate != null){
+                    result.add(new SequenceState<>(prevCandidate, timeStep.observation, null));
+                }
+            }else{
+                Path selectPath = null;
+                State selectCandidate = null;
+                boolean existPath = false;
+                double minLen = 999999999.0;
+                for(State candidate:timeStep.candidates){
+                    Path path = createRouter().calcPath(prevCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(), prevCandidate.isOnDirectedEdge() ? prevCandidate.getOutgoingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE, candidate.isOnDirectedEdge() ? candidate.getIncomingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE);
+                    if(path.isFound() && (path.getDistance() < minLen || !existPath)){
+                        selectPath = path;
+                        selectCandidate = candidate;
+                        minLen = path.getDistance();
+                        existPath = true;
+                    }
+                }
+                if(existPath){
+                    prevCandidate = selectCandidate;
+                    result.add(new SequenceState<>(selectCandidate, timeStep.observation, selectPath));
+                }
+            }
+        }
+
+        return result;
+    }
 
     /**
      * Filters observations to only those which will be used for map matching (i.e. those which
