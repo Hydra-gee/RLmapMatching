@@ -36,6 +36,7 @@ import com.graphhopper.storage.Graph;
 import com.graphhopper.storage.index.LocationIndexTree;
 import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
+import com.graphhopper.util.shapes.GHPoint3D;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -161,7 +162,6 @@ public class MapMatching {
         // because they are modified in place.
         List<Collection<Snap>> splitsPerObservation = filteredObservations.stream().map(o -> locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, DefaultEdgeFilter.allEdges(weighting.getFlagEncoder()), measurementErrorSigma))
                 .collect(Collectors.toList());
-
         // Create the query graph, containing split edges so that all the places where an observation might have happened
         // are a node. This modifies the Snap objects and puts the new node numbers into them.
         queryGraph = QueryGraph.create(graph, splitsPerObservation.stream().flatMap(Collection::stream).collect(Collectors.toList()));
@@ -174,7 +174,7 @@ public class MapMatching {
         // Creates candidates from the Snaps of all observations (a candidate is basically a
         // Snap + direction).
         List<ObservationWithCandidateStates> timeSteps = createTimeSteps(filteredObservations, splitsPerObservation);
-
+//        timeSteps = timeSteps.stream().filter(s->s.candidates.iterator().next().getSnap().getQueryDistance()<=measurementErrorSigma).collect(Collectors.toList());
         // Compute the most likely sequence of map matching candidates:
         List<SequenceState<State, Observation, Path>> seq = computeViterbiSequence(timeSteps);
 
@@ -198,6 +198,7 @@ public class MapMatching {
         splitsPerObservation = splitsPerObservation.stream().map(this::deduplicate).collect(Collectors.toList());
         List<ObservationWithCandidateStates> timeSteps = createTimeSteps(filteredObservations, splitsPerObservation);
         List<SequenceState<State, Observation, Path>> seq = computeShortestSequence(timeSteps);
+//        List<SequenceState<State, Observation, Path>> seq = computeKeypointSequence(timeSteps);
 
         //generate Result
         List<EdgeIteratorState> path = seq.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
@@ -218,7 +219,34 @@ public class MapMatching {
         return result;
     }
 
-    private List<SequenceState<State, Observation, Path>> computeShortestSequence(List<ObservationWithCandidateStates> timeSteps) {
+    private List<SequenceState<State, Observation, Path>> computeSPDynamic(List<ObservationWithCandidateStates> timeSteps) {
+        Map<State, Double> sd = new HashMap<>();
+        ObservationWithCandidateStates lastTimeStep = null;
+        for(ObservationWithCandidateStates timeStep : timeSteps){
+            if(lastTimeStep==null){
+                for(State candidate:timeStep.candidates){
+                    sd.put(candidate, 0.0);
+                }
+            }else{
+                for(State candidate:timeStep.candidates){
+                    double minLen = Double.MAX_VALUE;
+                    State bestCandidate = null;
+                    for(State lastCandidate:lastTimeStep.candidates){
+                        Path path = createRouter().calcPath(lastCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                        if(path.isFound()){
+                            if(path.getDistance() + sd.get(lastCandidate) < minLen){
+                                minLen = path.getDistance() + sd.get(lastCandidate);
+//                                bestCandidate
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+        private List<SequenceState<State, Observation, Path>> computeShortestSequence(List<ObservationWithCandidateStates> timeSteps) {
         List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
         State prevCandidate = null;
         for (ObservationWithCandidateStates timeStep : timeSteps) {
@@ -234,7 +262,7 @@ public class MapMatching {
                 boolean existPath = false;
                 double minLen = 999999999.0;
                 for(State candidate:timeStep.candidates){
-                    Path path = createRouter().calcPath(prevCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(), prevCandidate.isOnDirectedEdge() ? prevCandidate.getOutgoingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE, candidate.isOnDirectedEdge() ? candidate.getIncomingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE);
+                    Path path = createRouter().calcPath(prevCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
                     if(path.isFound() && (path.getDistance() < minLen || !existPath)){
                         selectPath = path;
                         selectCandidate = candidate;
@@ -252,9 +280,96 @@ public class MapMatching {
         return result;
     }
 
+    //已提前进行降采样（密集点过滤）
+    private List<SequenceState<State, Observation, Path>> computeKeypointSequence(List<ObservationWithCandidateStates> timeSteps) {
+        int oriPos = 0,dstPos = timeSteps.size()-1;
+        SequenceState<State, Observation, Path> ori = null;
+        SequenceState<State, Observation, Path> dst = null;
+        List<SequenceState<State, Observation, Path>> tempKeyPoints = new ArrayList<>();
+        Path tempPath;
+        List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
+
+        //获取第一个有效timeStep对应的状态点
+        for(int i = 0;i<timeSteps.size();i++){
+            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
+            //若没有候选点说明该点无效
+            if(c!=null){
+                ori = new SequenceState<>(c, timeStep.observation, null);
+                oriPos = i;
+                result.add(ori);
+                break;
+            }
+        }
+
+        //获取最后一个timeStep对应的状态点
+        for(int i = timeSteps.size()-1;i>=0;i--){
+            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
+            //若没有候选点说明该点无效
+            if(c!=null){
+                dst = new SequenceState<>(c, timeStep.observation, null);
+                dstPos = i;
+                break;
+            }
+        }
+//        GHPoint3D oriState = ori.state.getSnap().getSnappedPoint();
+//        GHPoint3D dstState = dst.state.getSnap().getSnappedPoint();
+        tempPath = createRouter().calcPath(ori.state.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+        for(int i=oriPos+1;i<=dstPos;i++){
+            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+            Observation o = timeStep.observation;
+            List<EdgeIteratorState> allEdges = result.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
+            allEdges.addAll(tempPath.calcEdges());
+            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), measurementErrorSigma);
+            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<measurementErrorSigma).collect(Collectors.toList());
+            //检测到已匹配路径距离是否超过阈值，若未超过阈值或已到达终点，关键点序列中断
+            if(closePoints.isEmpty() && i!=dstPos){
+                //将该点添加到临时关键点列表
+                SequenceState<State, Observation, Path> last;
+                if(!tempKeyPoints.isEmpty()){
+                    last = tempKeyPoints.get(tempKeyPoints.size()-1);
+                }else{
+                    last = result.get(result.size()-1);
+                }
+                State state = null;
+                Path path = null;
+                SequenceState<State, Observation, Path> finalDst = dst;
+                //从关键点对应的候选点中，选出“到前一状态点距离”+“到终点距离”最小的一个
+                state = timeStep.candidates.stream().min(Comparator.comparing((s)-> {
+                    double finalPathLen;
+                    Path toLast = createRouter().calcPath(last.state.getSnap().getClosestNode(),s.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                    Path toDst = createRouter().calcPath(s.getSnap().getClosestNode(), finalDst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                    if(toLast.isFound() && toDst.isFound()){
+                        finalPathLen = toLast.getDistance() + toDst.getDistance();
+                    }else{
+                        finalPathLen = Double.MAX_VALUE;
+                    }
+                    return finalPathLen;
+                })).orElse(null);
+                if(state==null)continue;
+                path = createRouter().calcPath(last.state.getSnap().getClosestNode(), state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                tempKeyPoints.add(new SequenceState<>(state, timeStep.observation, path));
+            }else{
+                //检测临时关键点数量是否达到阈值
+                if(tempKeyPoints.size() >= 3){
+                    //达到阈值，将临时关键点全部转为正式关键点
+                    result.addAll(tempKeyPoints);
+                    State lastState = result.get(result.size()-1).state;
+                    tempPath = createRouter().calcPath(lastState.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                }
+                //清空临时关键点
+                tempKeyPoints.clear();
+                if(i==dstPos){
+                    result.add(new SequenceState<>(dst.state,dst.observation,tempPath));
+                }
+            }
+        }
+        return result;
+    }
     /**
      * Filters observations to only those which will be used for map matching (i.e. those which
-     * are separated by at least 2 * measurementErrorSigman
+     * are separated by at least 2 * measurementErrorSigma
      */
     private List<Observation> filterObservations(List<Observation> observations) {
         List<Observation> filtered = new ArrayList<>();
