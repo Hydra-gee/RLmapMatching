@@ -19,19 +19,23 @@ package com.graphhopper.matching;
 
 import com.graphhopper.util.shapes.GHPoint;
 
+import java.util.Date;
 import java.util.Objects;
 
 public class Observation {
     private GHPoint point;
-
+    private Date time;
     public Observation(GHPoint p) {
         this.point = p;
     }
-
+    public Observation(GHPoint p,Date time) {
+        this.point = p;
+        this.time = time;
+    }
     public GHPoint getPoint() {
         return point;
     }
-
+    public Date getTime(){return time;}
     @Override
     public String toString() {
         return "Observation{" +

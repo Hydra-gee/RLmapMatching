@@ -84,6 +84,10 @@ function setup(map, mmClient) {
                         properties: {style: {color: "#00cc33", weight: 6, opacity: 0.4}}
                     };
                     routeLayer.addData(geojsonFeature);
+                    // for(let point of matchedPath.points.coordinates){
+                    //     L.circleMarker([point[1],point[0]],{color:'blue',opacity:1}).addTo(map)
+                    // }
+                    console.log(matchedPath.points);
                     //添加观测点复选框
                     if(json['points']){
                         appendHtml = "";

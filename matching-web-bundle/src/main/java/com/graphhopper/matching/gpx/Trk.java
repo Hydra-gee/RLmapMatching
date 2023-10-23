@@ -40,7 +40,7 @@ public class Trk {
         ArrayList<Observation> gpxEntries = new ArrayList<>();
         for (Trkseg t : trkseg) {
             for (Trkpt trkpt : t.trkpt) {
-                gpxEntries.add(new Observation(new GHPoint3D(trkpt.lat, trkpt.lon, trkpt.ele)));
+                gpxEntries.add(new Observation(new GHPoint3D(trkpt.lat, trkpt.lon, trkpt.ele),trkpt.time));
             }
         }
         return gpxEntries;

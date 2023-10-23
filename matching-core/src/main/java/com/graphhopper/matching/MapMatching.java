@@ -43,6 +43,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.lang.System.currentTimeMillis;
+
 /**
  * This class matches real world GPX entries to the digital road network stored
  * in GraphHopper. The Viterbi algorithm is used to compute the most likely
@@ -197,8 +199,8 @@ public class MapMatching {
         queryGraph = QueryGraph.create(graph, splitsPerObservation.stream().flatMap(Collection::stream).collect(Collectors.toList()));
         splitsPerObservation = splitsPerObservation.stream().map(this::deduplicate).collect(Collectors.toList());
         List<ObservationWithCandidateStates> timeSteps = createTimeSteps(filteredObservations, splitsPerObservation);
-        List<SequenceState<State, Observation, Path>> seq = computeShortestSequence(timeSteps);
-//        List<SequenceState<State, Observation, Path>> seq = computeKeypointSequence(timeSteps);
+//        List<SequenceState<State, Observation, Path>> seq = computeSPDynamic(timeSteps);
+        List<SequenceState<State, Observation, Path>> seq = computeKeypointSequence(timeSteps);
 
         //generate Result
         List<EdgeIteratorState> path = seq.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
@@ -220,126 +222,182 @@ public class MapMatching {
     }
 
     private List<SequenceState<State, Observation, Path>> computeSPDynamic(List<ObservationWithCandidateStates> timeSteps) {
+        double timethresold = 10000;
         Map<State, Double> sd = new HashMap<>();
+        Map<State, State> bl = new HashMap<>();
+        Map<State,SequenceState<State, Observation, Path>> bd = new HashMap<>();
         ObservationWithCandidateStates lastTimeStep = null;
         for(ObservationWithCandidateStates timeStep : timeSteps){
-            if(lastTimeStep==null){
-                for(State candidate:timeStep.candidates){
-                    sd.put(candidate, 0.0);
-                }
-            }else{
-                for(State candidate:timeStep.candidates){
+            boolean allCandidateUnreachable = true;
+            //第一个观测点的候选点，总距离为0
+            for(State candidate:timeStep.candidates){
+                if(lastTimeStep==null){
+                        sd.put(candidate, 0.0);
+                        allCandidateUnreachable = false;
+                }else{
                     double minLen = Double.MAX_VALUE;
-                    State bestCandidate = null;
+                    State bestLastCandidate = null;
+                    Path bestPath = null;
                     for(State lastCandidate:lastTimeStep.candidates){
+                        if(!sd.containsKey(lastCandidate)){
+                            continue;
+                        }
                         Path path = createRouter().calcPath(lastCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
                         if(path.isFound()){
                             if(path.getDistance() + sd.get(lastCandidate) < minLen){
+//                                if(lastCandidate.getSnap().getSnappedPoint().lat-31.34828316246198 <=0.00000000000001&&
+//                                candidate.getSnap().getSnappedPoint().lat-31.34853276644348 <=0.00000000000001){
+//                                    int a = 1;
+//                                }
                                 minLen = path.getDistance() + sd.get(lastCandidate);
-//                                bestCandidate
+                                bestLastCandidate = lastCandidate;
+                                bestPath = path;
                             }
                         }
                     }
-                }
-            }
-        }
-        return null;
-    }
-
-        private List<SequenceState<State, Observation, Path>> computeShortestSequence(List<ObservationWithCandidateStates> timeSteps) {
-        List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
-        State prevCandidate = null;
-        for (ObservationWithCandidateStates timeStep : timeSteps) {
-            if (prevCandidate == null){
-                //第一个观测点，选择离其最近的候选点
-                prevCandidate = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
-                if(prevCandidate != null){
-                    result.add(new SequenceState<>(prevCandidate, timeStep.observation, null));
-                }
-            }else{
-                Path selectPath = null;
-                State selectCandidate = null;
-                boolean existPath = false;
-                double minLen = 999999999.0;
-                for(State candidate:timeStep.candidates){
-                    Path path = createRouter().calcPath(prevCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-                    if(path.isFound() && (path.getDistance() < minLen || !existPath)){
-                        selectPath = path;
-                        selectCandidate = candidate;
-                        minLen = path.getDistance();
-                        existPath = true;
+                    if(bestPath==null){
+                        continue;
+                    }
+                    double v = bestPath.getDistance() * 1000/ (timeStep.observation.getTime().getTime() - lastTimeStep.observation.getTime().getTime());
+                    if(v < 35){
+                        sd.put(candidate,minLen);
+                        bl.put(candidate,bestLastCandidate);
+                        bd.put(candidate,new SequenceState<>(candidate,timeStep.observation,bestPath));
+                        allCandidateUnreachable = false;
                     }
                 }
-                if(existPath){
-                    prevCandidate = selectCandidate;
-                    result.add(new SequenceState<>(selectCandidate, timeStep.observation, selectPath));
-                }
+            }
+            if(!allCandidateUnreachable){
+                lastTimeStep = timeStep;
             }
         }
-
+        State minLastState = null;
+        Double minTotalLen = Double.MAX_VALUE;
+        //计算终点对应的状态点
+        for(State candidate:lastTimeStep.candidates){
+            if(sd.containsKey(candidate) && sd.get(candidate) < minTotalLen){
+                minTotalLen = sd.get(candidate);
+                minLastState = candidate;
+            }
+        }
+        List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
+        State thisCandidate = minLastState;
+        while(bl.containsKey(thisCandidate)){
+            result.add(bd.get(thisCandidate));
+            thisCandidate = bl.get(thisCandidate);
+        }
+        Collections.reverse(result);
         return result;
     }
 
     //已提前进行降采样（密集点过滤）
     private List<SequenceState<State, Observation, Path>> computeKeypointSequence(List<ObservationWithCandidateStates> timeSteps) {
+        long t1 = System.currentTimeMillis();
         int oriPos = 0,dstPos = timeSteps.size()-1;
         SequenceState<State, Observation, Path> ori = null;
         SequenceState<State, Observation, Path> dst = null;
         List<SequenceState<State, Observation, Path>> tempKeyPoints = new ArrayList<>();
         Path tempPath;
         List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
+        Path bestTempPath = null;
+        double minPathLen = Double.MAX_VALUE;
+        for(int i = 0;i<timeSteps.size() && bestTempPath==null;i++){
+            if (timeSteps.get(i).candidates.isEmpty()){
+                continue;
+            }
+            for(int j = timeSteps.size()-1;j>=0 && bestTempPath==null;j--){
+                if (timeSteps.get(j).candidates.isEmpty()){
+                    continue;
+                }
+                for(State oriCandidates:timeSteps.get(i).candidates){
+                    for(State dstCandidates:timeSteps.get(j).candidates){
+                        Path p = createRouter().calcPath(oriCandidates.getSnap().getClosestNode(), dstCandidates.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                        Path p = createRouter().calcPath(oriCandidates.getSnap().getClosestNode(), dstCandidates.getSnap().getClosestNode(), oriCandidates.isOnDirectedEdge() ? oriCandidates.getOutgoingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE, dstCandidates.isOnDirectedEdge() ? dstCandidates.getIncomingVirtualEdge().getEdge() : EdgeIterator.ANY_EDGE);
+                        if(p.isFound()&&p.getDistance()<minPathLen){
+                            minPathLen = p.getDistance();
+                            bestTempPath = p;
+                            oriPos = i;
+                            dstPos = j;
+                            ori = new SequenceState<>(oriCandidates, timeSteps.get(i).observation, null);
+                            dst = new SequenceState<>(dstCandidates, timeSteps.get(j).observation, null);
 
-        //获取第一个有效timeStep对应的状态点
-        for(int i = 0;i<timeSteps.size();i++){
-            ObservationWithCandidateStates timeStep = timeSteps.get(i);
-            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
-            //若没有候选点说明该点无效
-            if(c!=null){
-                ori = new SequenceState<>(c, timeStep.observation, null);
-                oriPos = i;
-                result.add(ori);
-                break;
+                        }
+                    }
+                }
             }
         }
-
-        //获取最后一个timeStep对应的状态点
-        for(int i = timeSteps.size()-1;i>=0;i--){
-            ObservationWithCandidateStates timeStep = timeSteps.get(i);
-            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
-            //若没有候选点说明该点无效
-            if(c!=null){
-                dst = new SequenceState<>(c, timeStep.observation, null);
-                dstPos = i;
-                break;
-            }
-        }
+        result.add(ori);
+        long t2 = System.currentTimeMillis();
+        System.out.println(t2-t1);
+//        //获取第一个有效timeStep对应的状态点
+//        for(int i = 0;i<timeSteps.size();i++){
+//            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+//            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
+//            //若没有候选点说明该点无效
+//            if(c!=null){
+//                ori = new SequenceState<>(c, timeStep.observation, null);
+//                oriPos = i;
+//                result.add(ori);
+//                break;
+//            }
+//        }
+//
+//        //获取最后一个timeStep对应的状态点
+//        for(int i = timeSteps.size()-1;i>=0;i--){
+//            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+//            State c = timeStep.candidates.stream().min(Comparator.comparing(s->s.getSnap().getQueryDistance())).orElse(null);
+//            //若没有候选点说明该点无效
+//            if(c!=null){
+//                dst = new SequenceState<>(c, timeStep.observation, null);
+//                dstPos = i;
+//                break;
+//            }
+//        }
 //        GHPoint3D oriState = ori.state.getSnap().getSnappedPoint();
 //        GHPoint3D dstState = dst.state.getSnap().getSnappedPoint();
-        tempPath = createRouter().calcPath(ori.state.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-        for(int i=oriPos+1;i<=dstPos;i++){
+//        tempPath = createRouter().calcPath(ori.state.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+        tempPath = bestTempPath;
+        List<Integer> tempKPIndexs = new ArrayList<>();
+        for(int i=oriPos+1;i<dstPos;i++){
+//            if(result.size()>1)break;
+            double keyThreshold = 10;
+            //计算到临时路径距离
             ObservationWithCandidateStates timeStep = timeSteps.get(i);
             Observation o = timeStep.observation;
             List<EdgeIteratorState> allEdges = result.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
             allEdges.addAll(tempPath.calcEdges());
-            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), measurementErrorSigma);
-            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<measurementErrorSigma).collect(Collectors.toList());
-            //检测到已匹配路径距离是否超过阈值，若未超过阈值或已到达终点，关键点序列中断
-            if(closePoints.isEmpty() && i!=dstPos){
-                //将该点添加到临时关键点列表
-                SequenceState<State, Observation, Path> last;
-                if(!tempKeyPoints.isEmpty()){
-                    last = tempKeyPoints.get(tempKeyPoints.size()-1);
-                }else{
-                    last = result.get(result.size()-1);
+            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), keyThreshold);
+//            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, DefaultEdgeFilter.allEdges(weighting.getFlagEncoder()), keyThreshold);
+            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<keyThreshold).collect(Collectors.toList());
+            boolean isKey = true;
+            for(EdgeIteratorState e:allEdges){
+                double n1lat = queryGraph.getNodeAccess().getLatitude(e.getBaseNode());
+                double n1lon = queryGraph.getNodeAccess().getLongitude(e.getBaseNode());
+                double n2lat = queryGraph.getNodeAccess().getLatitude(e.getAdjNode());
+                double n2lon = queryGraph.getNodeAccess().getLongitude(e.getAdjNode());
+//                double dis = distanceCalc.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,30,40,30.000000000000001,40.000000000000001);
+                double dis = distanceCalc.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,n1lat,n1lon,n2lat,n2lon);
+                dis = distanceCalc.calcDenormalizedDist(dis);
+                if (dis < keyThreshold){
+                    isKey = false;
+                    break;
                 }
-                State state = null;
-                Path path = null;
-                SequenceState<State, Observation, Path> finalDst = dst;
-                //从关键点对应的候选点中，选出“到前一状态点距离”+“到终点距离”最小的一个
-                state = timeStep.candidates.stream().min(Comparator.comparing((s)-> {
+            }
+
+            //超过阈值，设为临时关键点
+//            if(closePoints.isEmpty()){
+            if(isKey){
+                tempKPIndexs.add(i);
+            }else{
+                tempKPIndexs.clear();
+            }
+            if(tempKPIndexs.size()>=3){
+                State last = result.get(result.size()-1).state;
+                SequenceState<State, Observation, Path> finalDst1 = dst;
+                State state = timeSteps.get(tempKPIndexs.get(0)).candidates.stream().min(Comparator.comparing((s)-> {
                     double finalPathLen;
-                    Path toLast = createRouter().calcPath(last.state.getSnap().getClosestNode(),s.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-                    Path toDst = createRouter().calcPath(s.getSnap().getClosestNode(), finalDst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                    Path toLast = createRouter().calcPath(last.getSnap().getClosestNode(),s.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                    Path toDst = createRouter().calcPath(s.getSnap().getClosestNode(), finalDst1.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
                     if(toLast.isFound() && toDst.isFound()){
                         finalPathLen = toLast.getDistance() + toDst.getDistance();
                     }else{
@@ -347,24 +405,75 @@ public class MapMatching {
                     }
                     return finalPathLen;
                 })).orElse(null);
-                if(state==null)continue;
-                path = createRouter().calcPath(last.state.getSnap().getClosestNode(), state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-                tempKeyPoints.add(new SequenceState<>(state, timeStep.observation, path));
-            }else{
-                //检测临时关键点数量是否达到阈值
-                if(tempKeyPoints.size() >= 3){
-                    //达到阈值，将临时关键点全部转为正式关键点
-                    result.addAll(tempKeyPoints);
-                    State lastState = result.get(result.size()-1).state;
-                    tempPath = createRouter().calcPath(lastState.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-                }
-                //清空临时关键点
-                tempKeyPoints.clear();
-                if(i==dstPos){
-                    result.add(new SequenceState<>(dst.state,dst.observation,tempPath));
-                }
+                Path pa = createRouter().calcPath(last.getSnap().getClosestNode(),state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                Path pb = createRouter().calcPath(state.getSnap().getClosestNode(), finalDst1.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                result.add(new SequenceState<>(state,timeSteps.get(tempKPIndexs.get(0)).observation,pa));
+                tempPath = pb;
+                tempKPIndexs.clear();
             }
         }
+        result.add(new SequenceState<>(dst.state,dst.observation,tempPath));
+
+
+
+//        for(int i=oriPos+1;i<=dstPos;i++){
+//            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+//            Observation o = timeStep.observation;
+//            List<EdgeIteratorState> allEdges = result.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
+//            allEdges.addAll(tempPath.calcEdges());
+//            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), 200);
+//            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<200).collect(Collectors.toList());
+//            //检测到已匹配路径距离是否超过阈值，若未超过阈值或已到达终点，关键点序列中断
+//            if(closePoints.isEmpty() && i!=dstPos){
+//                //将该点添加到临时关键点列表
+//                SequenceState<State, Observation, Path> last;
+//                if(!tempKeyPoints.isEmpty()){
+//                    last = tempKeyPoints.get(tempKeyPoints.size()-1);
+//                }else{
+//                    last = result.get(result.size()-1);
+//                }
+//                State state = null;
+//                Path path = null;
+//                SequenceState<State, Observation, Path> finalDst = dst;
+//                //从关键点对应的候选点中，选出“到前一状态点距离”+“到终点距离”最小的一个
+//                state = timeStep.candidates.stream().min(Comparator.comparing((s)-> {
+//                    double finalPathLen;
+//                    Path toLast = createRouter().calcPath(last.state.getSnap().getClosestNode(),s.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                    Path toDst = createRouter().calcPath(s.getSnap().getClosestNode(), finalDst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                    if(toLast.isFound() && toDst.isFound()){
+//                        finalPathLen = toLast.getDistance() + toDst.getDistance();
+//                    }else{
+//                        finalPathLen = Double.MAX_VALUE;
+//                    }
+//                    return finalPathLen;
+//                })).orElse(null);
+//                if(state==null)continue;
+//                path = createRouter().calcPath(last.state.getSnap().getClosestNode(), state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                tempKeyPoints.add(new SequenceState<>(state, timeStep.observation, path));
+//            }else{
+//                //检测临时关键点数量是否达到阈值
+//                if(tempKeyPoints.size() >= 5){
+//                    //达到阈值，将临时关键点全部转为正式关键点
+//                    result.addAll(tempKeyPoints);
+//                    State lastState = result.get(result.size()-1).state;
+//                    tempPath = createRouter().calcPath(lastState.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                }
+//                //清空临时关键点
+//                tempKeyPoints.clear();
+//                if(i==dstPos){
+//                    result.add(new SequenceState<>(dst.state,dst.observation,tempPath));
+//                }
+//            }
+//            if(tempKeyPoints.size() >= 5){
+//                //达到阈值，将临时关键点全部转为正式关键点
+//                result.addAll(tempKeyPoints);
+//                State lastState = result.get(result.size()-1).state;
+//                tempPath = createRouter().calcPath(lastState.getSnap().getClosestNode(), dst.state.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+//                tempKeyPoints.clear();
+//            }
+//        }
+        long t3 = System.currentTimeMillis();
+        System.out.println(t3-t2);
         return result;
     }
     /**
@@ -535,7 +644,8 @@ public class MapMatching {
                     super.initCollections(50);
                 }
             };
-            router.setMaxVisitedNodes(maxVisitedNodes);
+//            router.setMaxVisitedNodes(maxVisitedNodes);
+            router.setMaxVisitedNodes(Integer.MAX_VALUE);
         }
         return router;
     }
