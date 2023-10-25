@@ -65,7 +65,15 @@ function setup(map, mmClient) {
             var gpsAccuracy = $("#accuracy-input").val();
             if (!gpsAccuracy)
                 gpsAccuracy = 20;
-
+            var keyPointNum = $("#keypoint-input").val();
+            if (!keyPointNum)
+                keyPointNum = 999;
+            var kpDisThreshold = $("#kp-dis-input").val();
+            if (!kpDisThreshold)
+                kpDisThreshold = 50;
+            var kpConNumThreshold = $("#kp-connum-input").val();
+            if (!kpConNumThreshold)
+                kpConNumThreshold = 3;
             mmClient.vehicle = vehicle;
             mmClient.doRequest(content, function (json) {
                 if (json.message) {
@@ -129,7 +137,7 @@ function setup(map, mmClient) {
                 } else {
                     $("#map-matching-error").text("unknown error");
                 }
-            }, {gps_accuracy: gpsAccuracy});
+            }, {gps_accuracy: gpsAccuracy,keypoint_num:keyPointNum,kp_dis_threshold:kpDisThreshold,kp_connum_threshold:kpConNumThreshold});
         };
         reader.readAsText(file);
     }
@@ -144,6 +152,9 @@ GraphHopperMapMatching = function (args) {
     this.gps_accuracy = 20;
     this.data_type = "json";
     this.max_visited_nodes = 3000;
+    this.keypoint_num = 999;
+    this.kp_dis_threshold = 50;
+    this.kp_connum_threshold = 3;
 
     graphhopper.util.copyProperties(args, this);
 };
@@ -157,7 +168,10 @@ GraphHopperMapMatching.prototype.doRequest = function (content, callback, reqArg
     var url = args.host + args.basePath + "?vehicle=" + args.vehicle
             + "&gps_accuracy=" + args.gps_accuracy
             + "&type=" + args.data_type
-            + "&max_visited_nodes=" + args.max_visited_nodes;
+            + "&max_visited_nodes=" + args.max_visited_nodes
+            + "&keypoint_num=" + args.keypoint_num
+            + "&kp_dis_threshold=" + args.kp_dis_threshold
+            + "&kp_connum_threshold=" + args.kp_connum_threshold;
 
     if (args.key)
         url += "&key=" + args.key;

@@ -43,6 +43,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.lang.System.currentTimeMillis;
 
 /**
@@ -76,7 +78,9 @@ public class MapMatching {
     private final DistanceCalc distanceCalc = new DistancePlaneProjection();
     private final Weighting weighting;
     private QueryGraph queryGraph;
-
+    private int maxKeypointNum = 999;
+    private double kpDisThreshold = 50.0;
+    private int kpConnumThreshold = 3;
     public MapMatching(GraphHopper graphHopper, PMap hints) {
         this.locationIndex = (LocationIndexTree) graphHopper.getLocationIndex();
 
@@ -156,6 +160,15 @@ public class MapMatching {
         this.measurementErrorSigma = measurementErrorSigma;
     }
 
+    public void setMaxKeypointNum(int maxKeypointNum){
+        this.maxKeypointNum = maxKeypointNum;
+    }
+    public void setKpDisThreshold(double kpDisThreshold){
+        this.kpDisThreshold = kpDisThreshold;
+    }
+    public void setKpConnumThreshold(int kpConnumThreshold){
+        this.kpConnumThreshold = kpConnumThreshold;
+    }
     public MatchResult match(List<Observation> observations) {
         List<Observation> filteredObservations = filterObservations(observations);
 
@@ -359,16 +372,15 @@ public class MapMatching {
         tempPath = bestTempPath;
         List<Integer> tempKPIndexs = new ArrayList<>();
         for(int i=oriPos+1;i<dstPos;i++){
-//            if(result.size()>1)break;
-            double keyThreshold = 10;
+            if(result.size()>maxKeypointNum)break;
             //计算到临时路径距离
             ObservationWithCandidateStates timeStep = timeSteps.get(i);
             Observation o = timeStep.observation;
             List<EdgeIteratorState> allEdges = result.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
             allEdges.addAll(tempPath.calcEdges());
-            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), keyThreshold);
+//            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, new SpecificEdgeFilter(allEdges), keyThreshold);
 //            List<Snap> closePoints = locationIndex.findNClosest(o.getPoint().lat, o.getPoint().lon, DefaultEdgeFilter.allEdges(weighting.getFlagEncoder()), keyThreshold);
-            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<keyThreshold).collect(Collectors.toList());
+//            closePoints = closePoints.stream().filter(s->s.getQueryDistance()<keyThreshold).collect(Collectors.toList());
             boolean isKey = true;
             for(EdgeIteratorState e:allEdges){
                 double n1lat = queryGraph.getNodeAccess().getLatitude(e.getBaseNode());
@@ -376,9 +388,10 @@ public class MapMatching {
                 double n2lat = queryGraph.getNodeAccess().getLatitude(e.getAdjNode());
                 double n2lon = queryGraph.getNodeAccess().getLongitude(e.getAdjNode());
 //                double dis = distanceCalc.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,30,40,30.000000000000001,40.000000000000001);
-                double dis = distanceCalc.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,n1lat,n1lon,n2lat,n2lon);
+//                double dis = distanceCalc.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,n1lat,n1lon,n2lat,n2lon);
+                double dis = this.calcNormalizedEdgeDistance(o.getPoint().lat, o.getPoint().lon,n1lat,n1lon,n2lat,n2lon);
                 dis = distanceCalc.calcDenormalizedDist(dis);
-                if (dis < keyThreshold){
+                if (dis < this.kpDisThreshold){
                     isKey = false;
                     break;
                 }
@@ -391,7 +404,7 @@ public class MapMatching {
             }else{
                 tempKPIndexs.clear();
             }
-            if(tempKPIndexs.size()>=3){
+            if(tempKPIndexs.size()>=this.kpConnumThreshold){
                 State last = result.get(result.size()-1).state;
                 SequenceState<State, Observation, Path> finalDst1 = dst;
                 State state = timeSteps.get(tempKPIndexs.get(0)).candidates.stream().min(Comparator.comparing((s)-> {
@@ -413,9 +426,6 @@ public class MapMatching {
             }
         }
         result.add(new SequenceState<>(dst.state,dst.observation,tempPath));
-
-
-
 //        for(int i=oriPos+1;i<=dstPos;i++){
 //            ObservationWithCandidateStates timeStep = timeSteps.get(i);
 //            Observation o = timeStep.observation;
@@ -633,7 +643,7 @@ public class MapMatching {
                 }
             };
             LandmarkStorage lms = landmarks.getLandmarkStorage();
-            int activeLM = Math.min(8, lms.getLandmarkCount());
+            int activeLM = min(8, lms.getLandmarkCount());
             algo.setApproximation(LMApproximator.forLandmarks(queryGraph, lms, activeLM));
             algo.setMaxVisitedNodes(maxVisitedNodes);
             router = algo;
@@ -746,6 +756,47 @@ public class MapMatching {
                     + gpxe.getSnap().getSnappedPoint();
         }
         return "[" + str + "]";
+    }
+
+    //把distanceCalc中的函数移进来测试
+    double calcShrinkFactor(double a_lat_deg, double b_lat_deg) {
+        return Math.cos(Math.toRadians((a_lat_deg + b_lat_deg) / 2.0));
+    }
+
+    public double calcNormalizedDist(double fromLat, double fromLon, double toLat, double toLon) {
+        double sinDeltaLat = Math.sin(Math.toRadians(toLat - fromLat) / 2.0);
+        double sinDeltaLon = Math.sin(Math.toRadians(toLon - fromLon) / 2.0);
+        return sinDeltaLat * sinDeltaLat + sinDeltaLon * sinDeltaLon * Math.cos(Math.toRadians(fromLat)) * Math.cos(Math.toRadians(toLat));
+    }
+
+    //保证垂足在线段上
+    public double calcNormalizedEdgeDistance(double r_lat_deg, double r_lon_deg, double a_lat_deg, double a_lon_deg, double b_lat_deg, double b_lon_deg) {
+        double shrinkFactor = this.calcShrinkFactor(a_lat_deg, b_lat_deg);
+        double a_lon = a_lon_deg * shrinkFactor;
+        double b_lon = b_lon_deg * shrinkFactor;
+        double r_lon = r_lon_deg * shrinkFactor;
+        double delta_lon = b_lon - a_lon;
+        double delta_lat = b_lat_deg - a_lat_deg;
+        if (delta_lat == 0.0) {
+            return this.calcNormalizedDist(a_lat_deg, r_lon_deg, r_lat_deg, r_lon_deg);
+        } else if (delta_lon == 0.0) {
+            return this.calcNormalizedDist(r_lat_deg, a_lon_deg, r_lat_deg, r_lon_deg);
+        } else {
+            double norm = delta_lon * delta_lon + delta_lat * delta_lat;
+            double factor = ((r_lon - a_lon) * delta_lon + (r_lat_deg - a_lat_deg) * delta_lat) / norm;
+            double c_lon = a_lon + factor * delta_lon;
+            double c_lat = a_lat_deg + factor * delta_lat;
+            double lat_min = min(a_lat_deg,b_lat_deg);
+            double lat_max = max(a_lat_deg,b_lat_deg);
+            double lon_min = min(a_lon_deg,b_lon_deg);
+            double lon_max = max(a_lon_deg,b_lon_deg);
+            if(c_lat>lat_min&&c_lat<lat_max&&c_lon / shrinkFactor>lon_min&&c_lon / shrinkFactor<lon_max){
+                return this.calcNormalizedDist(c_lat, c_lon / shrinkFactor, r_lat_deg, r_lon_deg);
+            }else{
+                return min(this.calcNormalizedDist(a_lat_deg, a_lon_deg, r_lat_deg, r_lon_deg),
+                        this.calcNormalizedDist(b_lat_deg, b_lon_deg, r_lat_deg, r_lon_deg));
+            }
+        }
     }
 
     private static class MapMatchedPath extends Path {

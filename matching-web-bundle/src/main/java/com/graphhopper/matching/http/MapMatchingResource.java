@@ -84,6 +84,9 @@ public class MapMatchingResource {
             @QueryParam("gpx.track") @DefaultValue("true") boolean withTrack,
             @QueryParam("traversal_keys") @DefaultValue("false") boolean enableTraversalKeys,
             @QueryParam("gps_accuracy") @DefaultValue("40") double gpsAccuracy,
+            @QueryParam("keypoint_num") @DefaultValue("999") int maxKeypointNum,
+            @QueryParam("kp_dis_threshold") @DefaultValue("50") double kpDisThreshold,
+            @QueryParam("kp_connum_threshold") @DefaultValue("3") int kpConnumThreshold,
             @QueryParam(MAX_VISITED_NODES) @DefaultValue("3000") int maxVisitedNodes) {
 
         boolean writeGPX = "gpx".equalsIgnoreCase(outType);
@@ -114,7 +117,10 @@ public class MapMatchingResource {
 
         MapMatching matching = new MapMatching(graphHopper, hints);
         matching.setMeasurementErrorSigma(gpsAccuracy);
-
+        //最大关键点数量
+        matching.setMaxKeypointNum(maxKeypointNum);
+        matching.setKpDisThreshold(kpDisThreshold);
+        matching.setKpConnumThreshold(kpConnumThreshold);
         List<Observation> measurements = gpx.trk.get(0).getEntries();
 //        MatchResult matchResult = matching.match(measurements);
         MatchResult matchResult = matching.SPmatch(measurements);
