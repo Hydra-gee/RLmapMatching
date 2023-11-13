@@ -223,7 +223,8 @@ public class MapMatching {
         List<ObservationWithCandidateStates> timeSteps = createTimeSteps(filteredObservations, splitsPerObservation);
 //        List<SequenceState<State, Observation, Path>> seq = computeSPDynamic(timeSteps);
 //        List<SequenceState<State, Observation, Path>> seq = computeKeypointSequence(timeSteps);
-        List<SequenceState<State, Observation, Path>> seq = rl(timeSteps);
+        List<SequenceState<State, Observation, Path>> seq = computeKeypointSequenceAd(timeSteps);
+//        List<SequenceState<State, Observation, Path>> seq = rl(timeSteps);
 
         //generate Result
         List<EdgeIteratorState> path = seq.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
@@ -411,6 +412,82 @@ public class MapMatching {
         return result;
     }
 
+    private List<SequenceState<State, Observation, Path>> computeKeypointSequenceAd(List<ObservationWithCandidateStates> timeSteps) {
+        List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
+        ObservationWithCandidateStates dstTimeStep = timeSteps.get(timeSteps.size()-1);
+        List<ObservationWithCandidateStates> tempKeyPoints = new ArrayList<>();
+        Map<State,Double> forwardLenMap = new HashMap<>();
+        Map<State,SequenceState<State, Observation, Path>> forwardPathMap = new HashMap<>();
+        Path bestPathToLast = null;
+        Path bestPathToDst = null;
+        ObservationWithCandidateStates lastKeypoint = null;
+        for(int i=0;i<timeSteps.size()-1;i++){
+            ObservationWithCandidateStates timeStep = timeSteps.get(i);
+//            List<EdgeIteratorState> allEdges = result.stream().filter(s1 -> s1.transitionDescriptor != null).flatMap(s1 -> s1.transitionDescriptor.calcEdges().stream()).collect(Collectors.toList());
+            List<EdgeIteratorState> allEdges = new ArrayList<>();
+            if(bestPathToLast!=null){
+                allEdges.addAll(bestPathToLast.calcEdges());
+            }
+            if(bestPathToDst!=null){
+                allEdges.addAll(bestPathToDst.calcEdges());
+            }
+            if(!pointNearEdges(timeStep.observation,this.kpDisThreshold,allEdges)){
+                tempKeyPoints.add(timeStep);
+            }
+            if(tempKeyPoints.size()>=this.kpConnumThreshold||i==0){
+                ObservationWithCandidateStates keyPoint = tempKeyPoints.get(0);
+                double minTotalLen = Double.MAX_VALUE;
+                for(State candidate:keyPoint.candidates){
+                    if(lastKeypoint==null){
+                        forwardLenMap.put(candidate, 0.0);
+                        forwardPathMap.put(candidate,new SequenceState<>(null,null,null));
+                    }else{
+                        double minLenToLast = Double.MAX_VALUE;
+                        SequenceState<State, Observation, Path> bestLastCandidate = null;
+                        for(State lastCandidate:lastKeypoint.candidates){
+                            if(!forwardLenMap.containsKey(lastCandidate)){
+                                continue;
+                            }
+                            Path path = createRouter().calcPath(lastCandidate.getSnap().getClosestNode(), candidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                            if(path.isFound()){
+                                if(path.getDistance() + forwardLenMap.get(lastCandidate) < minLenToLast){
+                                    minLenToLast = path.getDistance() + forwardLenMap.get(lastCandidate);
+                                    bestLastCandidate = new SequenceState<>(lastCandidate,lastKeypoint.observation,path);
+                                }
+                            }
+                        }
+                        forwardLenMap.put(candidate,minLenToLast);
+                        forwardPathMap.put(candidate,bestLastCandidate);
+                    }
+                    //calculate the min distance to dst, use for loop
+                    double minDisToDst = Double.MAX_VALUE;
+                    Path minPathToDst = null;
+                    for(State dstCandidate:dstTimeStep.candidates){
+                        Path path = createRouter().calcPath(candidate.getSnap().getClosestNode(), dstCandidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
+                        if(path.isFound()){
+                            minDisToDst = min(minDisToDst,path.getDistance());
+                            minPathToDst = path;
+                        }
+                    }
+                    if(minDisToDst + forwardLenMap.get(candidate) < minTotalLen){
+                        minTotalLen = minDisToDst + forwardLenMap.get(candidate);
+                        bestPathToLast = forwardPathMap.get(candidate).transitionDescriptor;
+                        bestPathToDst = minPathToDst;
+                        //keyPoint = new ObservationWithCandidateStates(keyPoint.observation,keyPoint.candidates.stream().filter(s->s.getSnap().getClosestNode()==candidate.getSnap().getClosestNode()).collect(Collectors.toList()));
+                    }
+                }
+                lastKeypoint = keyPoint;
+                tempKeyPoints.clear();
+            }
+        }
+        State thisCandidate = minLastState;
+        while(bl.containsKey(thisCandidate)){
+            result.add(bd.get(thisCandidate));
+            thisCandidate = bl.get(thisCandidate);
+        }
+        Collections.reverse(result);
+        return result;
+    }
     private List<SequenceState<State, Observation, Path>> rl(List<ObservationWithCandidateStates> timeSteps){
         List<SequenceState<State, Observation, Path>> result = new ArrayList<>();
         String hostName = "localhost";
@@ -849,6 +926,21 @@ public class MapMatching {
                         this.calcNormalizedDist(b_lat_deg, b_lon_deg, r_lat_deg, r_lon_deg));
             }
         }
+    }
+
+    public boolean pointNearEdges(Observation obs,double threshold,List<EdgeIteratorState> edges){
+        for(EdgeIteratorState e:edges){
+            double n1lat = queryGraph.getNodeAccess().getLatitude(e.getBaseNode());
+            double n1lon = queryGraph.getNodeAccess().getLongitude(e.getBaseNode());
+            double n2lat = queryGraph.getNodeAccess().getLatitude(e.getAdjNode());
+            double n2lon = queryGraph.getNodeAccess().getLongitude(e.getAdjNode());
+            double dis = this.calcNormalizedEdgeDistance(obs.getPoint().lat, obs.getPoint().lon,n1lat,n1lon,n2lat,n2lon);
+            dis = distanceCalc.calcDenormalizedDist(dis);
+            if (dis < threshold){
+                return true;
+            }
+        }
+        return false;
     }
 
     private static class MapMatchedPath extends Path {
