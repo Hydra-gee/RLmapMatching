@@ -122,8 +122,7 @@ public class MapMatchingResource {
         matching.setKpDisThreshold(kpDisThreshold);
         matching.setKpConnumThreshold(kpConnumThreshold);
         List<Observation> measurements = gpx.trk.get(0).getEntries();
-//        MatchResult matchResult = matching.match(measurements);
-        MatchResult matchResult = matching.SPmatch(measurements);
+        MatchResult matchResult = matching.match(measurements);
         // TODO: Request logging and timing should perhaps be done somewhere outside
         float took = sw.stop().getSeconds();
         String infoStr = request.getRemoteAddr() + " " + request.getLocale() + " " + request.getHeader("User-Agent");
