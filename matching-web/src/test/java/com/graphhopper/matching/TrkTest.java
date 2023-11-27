@@ -18,6 +18,7 @@
 package com.graphhopper.matching;
 
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.graphhopper.matching.entities.Observation;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.util.shapes.GHPoint;
 import org.junit.Test;

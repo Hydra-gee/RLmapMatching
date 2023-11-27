@@ -17,7 +17,6 @@
  */
 package com.graphhopper.matching.http;
 
-import com.bmw.hmm.SequenceState;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -27,6 +26,10 @@ import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.http.WebHelper;
 import com.graphhopper.matching.*;
+import com.graphhopper.matching.entities.EdgeMatch;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.Observation;
+import com.graphhopper.matching.entities.State;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.routing.ProfileResolver;
 import com.graphhopper.util.*;
@@ -87,6 +90,7 @@ public class MapMatchingResource {
             @QueryParam("keypoint_num") @DefaultValue("999") int maxKeypointNum,
             @QueryParam("kp_dis_threshold") @DefaultValue("50") double kpDisThreshold,
             @QueryParam("kp_connum_threshold") @DefaultValue("3") int kpConnumThreshold,
+            @QueryParam("algorithm") @DefaultValue("0") int algorithmIndex,
             @QueryParam(MAX_VISITED_NODES) @DefaultValue("3000") int maxVisitedNodes) {
 
         boolean writeGPX = "gpx".equalsIgnoreCase(outType);
@@ -115,12 +119,13 @@ public class MapMatchingResource {
         hints.putObject("profile", profile);
         errorIfLegacyParameters(hints);
 
-        MapMatching matching = new MapMatching(graphHopper, hints);
+        RLMM matching = new RLMM(graphHopper, hints);
         matching.setMeasurementErrorSigma(gpsAccuracy);
         //最大关键点数量
         matching.setMaxKeypointNum(maxKeypointNum);
         matching.setKpDisThreshold(kpDisThreshold);
         matching.setKpConnumThreshold(kpConnumThreshold);
+        matching.setMatchAlgoIndex(algorithmIndex);
         List<Observation> measurements = gpx.trk.get(0).getEntries();
         MatchResult matchResult = matching.match(measurements);
         // TODO: Request logging and timing should perhaps be done somewhere outside

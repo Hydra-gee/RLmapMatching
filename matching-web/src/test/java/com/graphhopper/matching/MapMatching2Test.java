@@ -21,6 +21,9 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.config.LMProfile;
 import com.graphhopper.config.Profile;
+import com.graphhopper.matching.entities.EdgeMatch;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.State;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.reader.osm.GraphHopperOSM;
 import com.graphhopper.routing.util.CarFlagEncoder;
@@ -64,10 +67,10 @@ public class MapMatching2Test {
         hopper.getRouterConfig().setLMDisablingAllowed(true);
         hopper.importOrLoad();
 
-        MapMatching mapMatching = new MapMatching(hopper, new PMap().putObject("profile", "my_profile"));
+        RLMM RLMM = new RLMM(hopper, new PMap().putObject("profile", "my_profile"));
 
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/issue-13.gpx"), Gpx.class);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
 
         // make sure no virtual edges are returned
         int edgeCount = hopper.getGraphHopperStorage().getAllEdges().length();
@@ -96,10 +99,10 @@ public class MapMatching2Test {
         hopper.getRouterConfig().setLMDisablingAllowed(true);
         hopper.importOrLoad();
 
-        MapMatching mapMatching = new MapMatching(hopper, new PMap().putObject("profile", "my_profile"));
+        RLMM RLMM = new RLMM(hopper, new PMap().putObject("profile", "my_profile"));
 
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/issue-70.gpx"), Gpx.class);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
 
         assertEquals(Arrays.asList("Милана Видака", "Милана Видака", "Милана Видака",
                 "Бранка Радичевића", "Бранка Радичевића", "Здравка Челара"),
@@ -123,11 +126,11 @@ public class MapMatching2Test {
         hopper.getRouterConfig().setLMDisablingAllowed(true);
         hopper.importOrLoad();
 
-        MapMatching mapMatching = new MapMatching(hopper, new PMap().putObject("profile", "my_profile"));
+        RLMM RLMM = new RLMM(hopper, new PMap().putObject("profile", "my_profile"));
 
         // query with two identical points
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/issue-127.gpx"), Gpx.class);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
 
         // make sure no virtual edges are returned
         int edgeCount = hopper.getGraphHopperStorage().getAllEdges().length();

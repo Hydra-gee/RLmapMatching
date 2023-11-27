@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.graphhopper.matching;
+package com.graphhopper.matching.entities;
 
 /**
  * Based on Newson, Paul, and John Krumm. "Hidden Markov map matching through

@@ -22,9 +22,9 @@ import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.config.Profile;
-import com.graphhopper.matching.MapMatching;
-import com.graphhopper.matching.MatchResult;
-import com.graphhopper.matching.Observation;
+import com.graphhopper.matching.RLMM;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.Observation;
 import com.graphhopper.reader.osm.GraphHopperOSM;
 import com.graphhopper.routing.util.EdgeFilter;
 import com.graphhopper.storage.GraphHopperStorage;
@@ -96,13 +96,13 @@ public class MeasurementCommand extends Command {
         GraphHopperStorage graph = graphHopper.getGraphHopperStorage();
         bbox = graph.getBounds();
         LocationIndexTree locationIndex = (LocationIndexTree) graphHopper.getLocationIndex();
-        MapMatching mapMatching = new MapMatching(graphHopper, new PMap().putObject("profile", "fast_car"));
+        RLMM RLMM = new RLMM(graphHopper, new PMap().putObject("profile", "fast_car"));
 
         // start tests:
         StopWatch sw = new StopWatch().start();
         try {
             printLocationIndexMatchQuery(locationIndex);
-            printTimeOfMapMatchQuery(graphHopper, mapMatching);
+            printTimeOfMapMatchQuery(graphHopper, RLMM);
             System.gc();
         } catch (Exception ex) {
             logger.error("Problem while measuring", ex);
@@ -154,7 +154,7 @@ public class MeasurementCommand extends Command {
      * lookups (previous tests), so will be affected by those. Otherwise this is largely testing the
      * routing and HMM performance.
      */
-    private void printTimeOfMapMatchQuery(final GraphHopper hopper, final MapMatching mapMatching) {
+    private void printTimeOfMapMatchQuery(final GraphHopper hopper, final RLMM RLMM) {
 
         // pick random start/end points to create a route, then pick random points from the route,
         // and then run the random points through map-matching.
@@ -194,7 +194,7 @@ public class MeasurementCommand extends Command {
                         }
                         // now match, provided there are enough points
                         if (mock.size() > 2) {
-                            MatchResult match = mapMatching.match(mock);
+                            MatchResult match = RLMM.match(mock);
                             // return something non-trivial, to avoid JVM optimizing away
                             return match.getEdgeMatches().size();
                         }

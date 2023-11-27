@@ -23,6 +23,9 @@ import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.config.LMProfile;
 import com.graphhopper.config.Profile;
+import com.graphhopper.matching.entities.EdgeMatch;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.Observation;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.reader.osm.GraphHopperOSM;
 import com.graphhopper.routing.util.CarFlagEncoder;
@@ -99,13 +102,13 @@ public class MapMatchingTest {
      */
     @Test
     public void testDoWork() {
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
         ResponsePath route2 = graphHopper.route(new GHRequest(
                 new GHPoint(51.358735, 12.360574),
                 new GHPoint(51.358594, 12.360032))
                 .setProfile("my_profile")).getBest();
         List<Observation> inputGPXEntries = createRandomGPXEntriesAlongRoute(route2);
-        MatchResult mr = mapMatching.match(inputGPXEntries);
+        MatchResult mr = RLMM.match(inputGPXEntries);
 
         // make sure no virtual edges are returned
         int edgeCount = graphHopper.getGraphHopperStorage().getAllEdges().length();
@@ -131,8 +134,8 @@ public class MapMatchingTest {
                 new GHPoint(51.330531, 12.380396))
                 .setProfile("my_profile")).getBest();
         inputGPXEntries = createRandomGPXEntriesAlongRoute(route1);
-        mapMatching.setMeasurementErrorSigma(5);
-        mr = mapMatching.match(inputGPXEntries);
+        RLMM.setMeasurementErrorSigma(5);
+        mr = RLMM.match(inputGPXEntries);
 
         assertEquals(Arrays.asList("Windmühlenstraße", "Windmühlenstraße", "Bayrischer Platz",
                 "Bayrischer Platz", "Bayrischer Platz"), fetchStreets(mr.getEdgeMatches()));
@@ -152,9 +155,9 @@ public class MapMatchingTest {
                 new GHPoint(51.323317, 12.387085))
                 .setProfile("my_profile")).getBest();
         inputGPXEntries = createRandomGPXEntriesAlongRoute(route);
-        mapMatching = new MapMatching(graphHopper, hints);
-        mapMatching.setMeasurementErrorSigma(20);
-        mr = mapMatching.match(inputGPXEntries);
+        RLMM = new RLMM(graphHopper, hints);
+        RLMM.setMeasurementErrorSigma(20);
+        mr = RLMM.match(inputGPXEntries);
 
         assertEquals(route.getDistance(), mr.getMatchLength(), 0.5);
         // GraphHopper travel times aren't exactly additive
@@ -174,13 +177,13 @@ public class MapMatchingTest {
     @Test
     public void testDistantPoints() {
         // OK with 1000 visited nodes:
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
         ResponsePath route = graphHopper.route(new GHRequest(
                 new GHPoint(51.23, 12.18),
                 new GHPoint(51.45, 12.59))
                 .setProfile("my_profile")).getBest();
         List<Observation> inputGPXEntries = createRandomGPXEntriesAlongRoute(route);
-        MatchResult mr = mapMatching.match(inputGPXEntries);
+        MatchResult mr = RLMM.match(inputGPXEntries);
 
         assertEquals(route.getDistance(), mr.getMatchLength(), 2);
         // GraphHopper travel times aren't exactly additive
@@ -188,9 +191,9 @@ public class MapMatchingTest {
 
         // not OK when we only allow a small number of visited nodes:
         PMap opts = new PMap(hints).putObject(Parameters.Routing.MAX_VISITED_NODES, 1);
-        mapMatching = new MapMatching(graphHopper, opts);
+        RLMM = new RLMM(graphHopper, opts);
         try {
-            mr = mapMatching.match(inputGPXEntries);
+            mr = RLMM.match(inputGPXEntries);
             fail("Expected sequence to be broken due to maxVisitedNodes being too small");
         } catch (RuntimeException e) {
             assertTrue(e.getMessage().startsWith("Sequence is broken for submitted track"));
@@ -203,13 +206,13 @@ public class MapMatchingTest {
      */
     @Test
     public void testClosePoints() {
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
         ResponsePath route = graphHopper.route(new GHRequest(
                 new GHPoint(51.342422, 12.3613358),
                 new GHPoint(51.342328, 12.3613358))
                 .setProfile("my_profile")).getBest();
         List<Observation> inputGPXEntries = createRandomGPXEntriesAlongRoute(route);
-        MatchResult mr = mapMatching.match(inputGPXEntries);
+        MatchResult mr = RLMM.match(inputGPXEntries);
 
         assertFalse(mr.getEdgeMatches().isEmpty());
         assertEquals(3, mr.getMatchLength(), 1);
@@ -226,9 +229,9 @@ public class MapMatchingTest {
     @Test
     public void testSmallSeparatedSearchDistance() throws IOException {
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/tour3-with-long-edge.gpx"), Gpx.class);
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
-        mapMatching.setMeasurementErrorSigma(20);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        RLMM RLMM = new RLMM(graphHopper, hints);
+        RLMM.setMeasurementErrorSigma(20);
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
         assertEquals(Arrays.asList("Weinligstraße", "Weinligstraße", "Weinligstraße",
                 "Fechnerstraße", "Fechnerstraße"), fetchStreets(mr.getEdgeMatches()));
         assertEquals(mr.getGpxEntriesLength(), mr.getMatchLength(), 11); // TODO: this should be around 300m according to Google ... need to check
@@ -240,13 +243,13 @@ public class MapMatchingTest {
      */
     @Test
     public void testLoop() throws IOException {
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
 
         // Need to reduce GPS accuracy because too many GPX are filtered out otherwise.
-        mapMatching.setMeasurementErrorSigma(40);
+        RLMM.setMeasurementErrorSigma(40);
 
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/tour2-with-loop.gpx"), Gpx.class);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
         assertEquals(
                 Arrays.asList("Gustav-Adolf-Straße", "Gustav-Adolf-Straße", "Gustav-Adolf-Straße",
                         "Leibnizstraße", "Hinrichsenstraße", "Hinrichsenstraße",
@@ -261,11 +264,11 @@ public class MapMatchingTest {
      */
     @Test
     public void testLoop2() throws IOException {
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
         // TODO smaller sigma like 40m leads to U-turn at Tschaikowskistraße
-        mapMatching.setMeasurementErrorSigma(50);
+        RLMM.setMeasurementErrorSigma(50);
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/tour-with-loop.gpx"), Gpx.class);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
         assertEquals(Arrays.asList("Jahnallee, B 87, B 181", "Jahnallee, B 87, B 181",
                 "Jahnallee, B 87, B 181", "Jahnallee, B 87, B 181", "Funkenburgstraße",
                 "Gustav-Adolf-Straße", "Tschaikowskistraße", "Jahnallee, B 87, B 181",
@@ -284,19 +287,19 @@ public class MapMatchingTest {
                 // Reduce penalty to allow U-turns
                 .putObject(Parameters.Routing.HEADING_PENALTY, 50);
 
-        MapMatching mapMatching = new MapMatching(graphHopper, hints);
+        RLMM RLMM = new RLMM(graphHopper, hints);
         Gpx gpx = xmlMapper.readValue(getClass().getResourceAsStream("/tour4-with-uturn.gpx"), Gpx.class);
 
         // with large measurement error, we expect no U-turn
-        mapMatching.setMeasurementErrorSigma(50);
-        MatchResult mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        RLMM.setMeasurementErrorSigma(50);
+        MatchResult mr = RLMM.match(gpx.trk.get(0).getEntries());
 
         assertEquals(Arrays.asList("Gustav-Adolf-Straße", "Gustav-Adolf-Straße", "Funkenburgstraße",
                 "Funkenburgstraße"), fetchStreets(mr.getEdgeMatches()));
 
         // with small measurement error, we expect the U-turn
-        mapMatching.setMeasurementErrorSigma(10);
-        mr = mapMatching.match(gpx.trk.get(0).getEntries());
+        RLMM.setMeasurementErrorSigma(10);
+        mr = RLMM.match(gpx.trk.get(0).getEntries());
 
         assertEquals(
                 Arrays.asList("Gustav-Adolf-Straße", "Gustav-Adolf-Straße", "Funkenburgstraße",

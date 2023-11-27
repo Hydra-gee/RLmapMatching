@@ -1,7 +1,7 @@
 package com.graphhopper.matching.cli;
 
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.graphhopper.matching.Observation;
+import com.graphhopper.matching.entities.Observation;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.matching.gpx.Trk;
 import com.graphhopper.util.shapes.BBox;

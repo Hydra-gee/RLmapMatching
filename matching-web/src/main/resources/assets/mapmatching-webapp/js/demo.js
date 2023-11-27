@@ -74,6 +74,9 @@ function setup(map, mmClient) {
             var kpConNumThreshold = $("#kp-connum-input").val();
             if (!kpConNumThreshold)
                 kpConNumThreshold = 3;
+            var algorithmIndex = $("#algorithm").val();
+            if (!algorithmIndex)
+                algorithmIndex = 0;
             mmClient.vehicle = vehicle;
             mmClient.doRequest(content, function (json) {
                 if (json.message) {
@@ -137,7 +140,7 @@ function setup(map, mmClient) {
                 } else {
                     $("#map-matching-error").text("unknown error");
                 }
-            }, {gps_accuracy: gpsAccuracy,keypoint_num:keyPointNum,kp_dis_threshold:kpDisThreshold,kp_connum_threshold:kpConNumThreshold});
+            }, {gps_accuracy: gpsAccuracy,keypoint_num:keyPointNum,kp_dis_threshold:kpDisThreshold,kp_connum_threshold:kpConNumThreshold,algorithmIndex:algorithmIndex});
         };
         reader.readAsText(file);
     }
@@ -155,6 +158,7 @@ GraphHopperMapMatching = function (args) {
     this.keypoint_num = 999;
     this.kp_dis_threshold = 50;
     this.kp_connum_threshold = 3;
+    this.algorithmIndex = 0;
 
     graphhopper.util.copyProperties(args, this);
 };
@@ -171,7 +175,9 @@ GraphHopperMapMatching.prototype.doRequest = function (content, callback, reqArg
             + "&max_visited_nodes=" + args.max_visited_nodes
             + "&keypoint_num=" + args.keypoint_num
             + "&kp_dis_threshold=" + args.kp_dis_threshold
-            + "&kp_connum_threshold=" + args.kp_connum_threshold;
+            + "&kp_connum_threshold=" + args.kp_connum_threshold
+            + "&algorithm=" + args.algorithmIndex;
+
 
     if (args.key)
         url += "&key=" + args.key;

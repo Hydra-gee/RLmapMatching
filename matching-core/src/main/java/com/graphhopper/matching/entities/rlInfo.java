@@ -1,4 +1,4 @@
-package com.graphhopper.matching;
+package com.graphhopper.matching.entities;
 
 import java.util.List;
 

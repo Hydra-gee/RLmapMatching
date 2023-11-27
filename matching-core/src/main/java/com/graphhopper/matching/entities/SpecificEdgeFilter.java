@@ -1,4 +1,4 @@
-package com.graphhopper.matching;
+package com.graphhopper.matching.entities;
 
 import com.carrotsearch.hppc.IntArrayList;
 import com.graphhopper.routing.util.EdgeFilter;

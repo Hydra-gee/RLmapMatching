@@ -1,4 +1,4 @@
-package com.graphhopper.matching;
+package com.graphhopper.matching.entities;
 
 public class PointCoordinate {
     public double obsLat;

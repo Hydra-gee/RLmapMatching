@@ -1,10 +1,10 @@
 package com.graphhopper.matching.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.graphhopper.matching.EdgeMatch;
-import com.graphhopper.matching.MatchResult;
-import com.graphhopper.matching.Observation;
-import com.graphhopper.matching.State;
+import com.graphhopper.matching.entities.EdgeMatch;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.Observation;
+import com.graphhopper.matching.entities.State;
 import com.graphhopper.routing.querygraph.VirtualEdgeIteratorState;
 import com.graphhopper.storage.IntsRef;
 import com.graphhopper.storage.index.Snap;

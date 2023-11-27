@@ -5,9 +5,9 @@ import com.graphhopper.GraphHopper;
 import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.config.Profile;
-import com.graphhopper.matching.MapMatching;
-import com.graphhopper.matching.MatchResult;
-import com.graphhopper.matching.Observation;
+import com.graphhopper.matching.RLMM;
+import com.graphhopper.matching.entities.MatchResult;
+import com.graphhopper.matching.entities.Observation;
 import com.graphhopper.matching.gpx.Gpx;
 import com.graphhopper.reader.osm.GraphHopperOSM;
 import com.graphhopper.routing.ev.DefaultEncodedValueFactory;
@@ -86,9 +86,9 @@ public class MatchCommand extends Command {
 
         PMap hints = new PMap().putObject(MAX_VISITED_NODES, args.get("max_visited_nodes"));
         hints.putObject("profile", profile.getName());
-        MapMatching mapMatching = new MapMatching(hopper, hints);
-        mapMatching.setTransitionProbabilityBeta(args.getDouble("transition_probability_beta"));
-        mapMatching.setMeasurementErrorSigma(args.getInt("gps_accuracy"));
+        RLMM RLMM = new RLMM(hopper, hints);
+        RLMM.setTransitionProbabilityBeta(args.getDouble("transition_probability_beta"));
+        RLMM.setMeasurementErrorSigma(args.getInt("gps_accuracy"));
 
         StopWatch importSW = new StopWatch();
         StopWatch matchSW = new StopWatch();
@@ -112,7 +112,7 @@ public class MatchCommand extends Command {
                 List<Observation> measurements = gpx.trk.get(0).getEntries();
                 importSW.stop();
                 matchSW.start();
-                MatchResult mr = mapMatching.match(measurements);
+                MatchResult mr = RLMM.match(measurements);
                 matchSW.stop();
                 System.out.println(gpxFile);
                 System.out.println("\tmatches:\t" + mr.getEdgeMatches().size() + ", gps entries:" + measurements.size());

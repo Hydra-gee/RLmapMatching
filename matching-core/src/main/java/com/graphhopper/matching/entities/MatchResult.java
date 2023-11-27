@@ -15,9 +15,8 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package com.graphhopper.matching;
+package com.graphhopper.matching.entities;
 
-import com.bmw.hmm.SequenceState;
 import com.graphhopper.routing.Path;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.Graph;
