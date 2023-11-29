@@ -125,8 +125,8 @@ public class ADRLMatch extends BaseMatch{
                         State tempDst = null;
                         for(State dstCandidate:dstTimeStep.candidates){
                             Path path = createRouter().calcPath(candidate.getSnap().getClosestNode(), dstCandidate.getSnap().getClosestNode(),EdgeIterator.ANY_EDGE,EdgeIterator.ANY_EDGE);
-                            if(path.isFound()){
-                                minDisToDst = min(minDisToDst,path.getDistance());
+                            if(path.isFound() && path.getDistance() < minDisToDst){
+                                minDisToDst = path.getDistance();
                                 minPathToDst = path;
                                 tempDst = dstCandidate;
                             }

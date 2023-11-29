@@ -17,11 +17,6 @@ public class NormalPreProcess extends BasePreProcess {
         super(rlmm);
     }
 
-    public Collection<Snap> deduplicate(Collection<Snap> splits) {
-        // Only keep one split per node number. Let's say the last one.
-        Map<Integer, Snap> splitsByNodeNumber = splits.stream().collect(Collectors.toMap(Snap::getClosestNode, s -> s, (s1, s2) -> s2));
-        return splitsByNodeNumber.values();
-    }
 
     @Override
     public List<ObservationWithCandidateStates> preprocess(List<Observation> observations) {

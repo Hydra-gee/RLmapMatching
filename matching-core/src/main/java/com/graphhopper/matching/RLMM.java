@@ -27,7 +27,9 @@ import com.graphhopper.config.Profile;
 import com.graphhopper.matching.entities.*;
 import com.graphhopper.matching.matchAlgo.*;
 import com.graphhopper.matching.preprocessAlgo.BasePreProcess;
+import com.graphhopper.matching.preprocessAlgo.CutHeadPreProcess;
 import com.graphhopper.matching.preprocessAlgo.NormalPreProcess;
+import com.graphhopper.matching.preprocessAlgo.StrictPreProcess;
 import com.graphhopper.routing.*;
 import com.graphhopper.routing.lm.LMApproximator;
 import com.graphhopper.routing.lm.LandmarkStorage;
@@ -197,7 +199,9 @@ public class RLMM {
             index = 0; // Default index
         }
         BaseMatch matchAlgo = matchAlgorithms[index];
-        BasePreProcess preprocessAlgo = new NormalPreProcess(this);
+//        BasePreProcess preprocessAlgo = new NormalPreProcess(this);
+//        BasePreProcess preprocessAlgo = new StrictPreProcess(this);
+        BasePreProcess preprocessAlgo = new CutHeadPreProcess(this);
         List<ObservationWithCandidateStates> timeSteps = preprocessAlgo.preprocess(observations);
         List<SequenceState<State, Observation, Path>> seq = matchAlgo.match(timeSteps);
 

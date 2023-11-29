@@ -11,6 +11,8 @@ import com.graphhopper.util.EdgeIterator;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public abstract class BasePreProcess {
     protected RLMM rlmm = null;
@@ -19,6 +21,12 @@ public abstract class BasePreProcess {
     }
 
     public abstract List<ObservationWithCandidateStates> preprocess(List<Observation> observations);
+
+    public Collection<Snap> deduplicate(Collection<Snap> splits) {
+        // Only keep one split per node number. Let's say the last one.
+        Map<Integer, Snap> splitsByNodeNumber = splits.stream().collect(Collectors.toMap(Snap::getClosestNode, s -> s, (s1, s2) -> s2));
+        return splitsByNodeNumber.values();
+    }
 
     /**
      * Filters observations to only those which will be used for map matching (i.e. those which

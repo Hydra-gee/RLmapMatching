@@ -86,11 +86,11 @@ public class MapMatchingResource {
             @QueryParam("gpx.route") @DefaultValue("true") boolean withRoute,
             @QueryParam("gpx.track") @DefaultValue("true") boolean withTrack,
             @QueryParam("traversal_keys") @DefaultValue("false") boolean enableTraversalKeys,
-            @QueryParam("gps_accuracy") @DefaultValue("40") double gpsAccuracy,
+            @QueryParam("gps_accuracy") @DefaultValue("50") double gpsAccuracy,
             @QueryParam("keypoint_num") @DefaultValue("999") int maxKeypointNum,
             @QueryParam("kp_dis_threshold") @DefaultValue("50") double kpDisThreshold,
             @QueryParam("kp_connum_threshold") @DefaultValue("3") int kpConnumThreshold,
-            @QueryParam("algorithm") @DefaultValue("0") int algorithmIndex,
+            @QueryParam("algorithm") @DefaultValue("3") int algorithmIndex,
             @QueryParam(MAX_VISITED_NODES) @DefaultValue("3000") int maxVisitedNodes) {
 
         boolean writeGPX = "gpx".equalsIgnoreCase(outType);

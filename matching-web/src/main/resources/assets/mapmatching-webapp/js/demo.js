@@ -43,10 +43,9 @@ function setup(map, mmClient) {
         var reader = new FileReader();
         reader.onload = function (e) {
             var content = e.target.result;
-
             var dom = (new DOMParser()).parseFromString(content, 'text/xml');
             var pathOriginal = toGeoJSON.gpx(dom);
-
+            console.log(pathOriginal    );
             routeLayer.clearLayers();
             if (pathOriginal.features[0]) {
 
@@ -95,9 +94,6 @@ function setup(map, mmClient) {
                         properties: {style: {color: "#00cc33", weight: 6, opacity: 0.4}}
                     };
                     routeLayer.addData(geojsonFeature);
-                    // for(let point of matchedPath.points.coordinates){
-                    //     L.circleMarker([point[1],point[0]],{color:'blue',opacity:1}).addTo(map)
-                    // }
                     console.log(matchedPath.points);
                     //添加观测点复选框
                     if(json['points']){
@@ -178,10 +174,9 @@ GraphHopperMapMatching.prototype.doRequest = function (content, callback, reqArg
             + "&kp_connum_threshold=" + args.kp_connum_threshold
             + "&algorithm=" + args.algorithmIndex;
 
-
+    console.log(content);
     if (args.key)
         url += "&key=" + args.key;
-
     $.ajax({
         timeout: 20000,
         url: url,
