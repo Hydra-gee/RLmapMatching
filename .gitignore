@@ -16,3 +16,5 @@ matching-core/build.xml
 bin/
 /matching-core/nbproject/
 matching-web/dependency-reduced-pom.xml
+dataset/
+graph-cache/
